@@ -1,0 +1,13 @@
+{
+  "domains": [{
+    "hosts": [{
+      "name": "host name"
+    }],
+    "name": "domain name"
+  }],
+  "user": {
+    "api_key": "your cloudflare api_key",
+    "email": "your cloudflare email"
+  },
+  "interval": 10
+}
