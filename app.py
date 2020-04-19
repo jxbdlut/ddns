@@ -61,12 +61,14 @@ class CloudFlareDDns:
     def update_my_ip(self):
         try:
             header = {'User-Agent': 'Mozilla/5.0 openwrt-koolshare-mod-v2.31'}
-            self.public_ipv4 = urlopen(Request("https://www.jxbdlut.online/cgi-bin/get_my_ip", headers=header)) \
+            self.public_ipv4 = urlopen(Request("https://www.jxbdlut.online/cgi-bin/get_my_ip", headers=header), timeout=5) \
                 .read().rstrip().decode("utf-8")
+            print("ipv4:{}".format(self.public_ipv4))
         except URLError:
             print("* no public IPv4 address detected")
         try:
-            self.public_ipv6 = urlopen(Request("http://ipv6.icanhazip.com/")).read().rstrip().decode("utf-8")
+            self.public_ipv6 = urlopen(Request("http://ipv6.icanhazip.com/"),  timeout=5).read().rstrip().decode("utf-8")
+            print("ipv6:{}".format(self.public_ipv6))
         except URLError:
             print("* no public IPv6 address detected")
 
