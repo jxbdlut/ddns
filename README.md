@@ -8,6 +8,7 @@
 * 使用json的配置文件
 
 ## json的配置文件如下
+  **interval 单位是秒**
   ```json
   {
     "domains": [{
