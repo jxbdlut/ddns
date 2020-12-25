@@ -61,7 +61,7 @@ class CloudFlareDDns:
     def update_my_ip(self):
         try:
             header = {'User-Agent': 'Mozilla/5.0 openwrt-koolshare-mod-v2.31'}
-            self.public_ipv4 = urlopen(Request("https://www.jxbdlut.online/cgi-bin/get_my_ip", headers=header), timeout=5) \
+            self.public_ipv4 = urlopen(Request("http://www.jxbdlut.online/cgi-bin/get_my_ip", headers=header), timeout=5) \
                 .read().rstrip().decode("utf-8")
             print("ipv4:{}".format(self.public_ipv4))
         except URLError:
@@ -78,7 +78,7 @@ class CloudFlareDDns:
         try:
             print("* zone id for {} is missing. attempting to get it from cloudflare...".format(domain["name"]))
             req = Request(self.base_url, headers=self.content_header)
-            for ret_domain in json.loads(urlopen(req).read().decode("utf-8"))["result"]:
+            for ret_domain in json.loads(urlopen(req, timeout=5).read().decode("utf-8"))["result"]:
                 if domain["name"] == ret_domain["name"]:
                     print("* zone id for {} is {}".format(domain["name"], ret_domain["id"]))
                     domain["id"] = ret_domain["id"] if ret_domain["id"] is not None else domain["id"]
@@ -92,7 +92,7 @@ class CloudFlareDDns:
         full_domain = host["name"] + "." + domain["name"]
         print("* host id for {} is missing. attempting to get it from cloudflare...".format(full_domain))
         req = Request(self.base_url + domain["id"] + "/dns_records/", headers=self.content_header)
-        result = json.loads(urlopen(req).read().decode("utf-8"))["result"]
+        result = json.loads(urlopen(req, timeout=5).read().decode("utf-8"))["result"]
         for e in result:
             if full_domain == e["name"]:
                 print("* host id for {} is {}".format(full_domain, e["id"]))
