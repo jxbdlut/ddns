@@ -8,6 +8,15 @@ import functools
 import json
 import sys
 import os
+import logging
+
+# 配置日志格式，包含时间戳
+logging.basicConfig(
+    level=logging.INFO,  # 设置日志级别
+    format='%(asctime)s %(message)s',  # 日志格式
+    datefmt='%Y-%m-%d %H:%M:%S',  # 时间戳格式
+    handlers=[logging.StreamHandler()]  # 输出到控制台
+)
 
 def get_current_path():
     paths = sys.path
@@ -42,7 +51,7 @@ class CloudFlareDDns:
         self.timer.start()
 
     def timer_func(self):
-        print("interval:{} now:{}".format(self.interval, datetime.datetime.now()))
+        logging.info("interval:{} now:{}".format(self.interval, datetime.datetime.now()))
 
     def get_config(self, config_path):
         env = os.environ.get('PYTHON_ENVIRONMENT') if os.environ.get('PYTHON_ENVIRONMENT') else ""
@@ -51,62 +60,62 @@ class CloudFlareDDns:
             try:
                 self.config = json.loads(file.read())
                 if not self.config["user"]["email"] or not self.config["user"]["api_key"]:
-                    print("* missing CloudFlare auth credentials")
+                    logging.error("* missing CloudFlare auth credentials")
                     exit(0)
                 return
             except ValueError:
-                print("the config file is wrong")
+                logging.error("the config file is wrong")
                 exit(0)
 
     def update_my_ip(self):
         try:
             header = {'User-Agent': 'Mozilla/5.0 openwrt-koolshare-mod-v2.31'}
             self.public_ipv4 = urlopen(Request("http://www.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header), timeout=10).read().rstrip().decode("utf-8")
-            # print("ipv4:{}".format(self.public_ipv4))
+            # logging.info("ipv4:{}".format(self.public_ipv4))
         except URLError as e:
             if isinstance(e.reason, TimeoutError):
-                print("* no public IPv4 address detected server timeout")
+                logging.error("* no public IPv4 address detected server timeout")
             else:
-                print(f"* no public IPv4 address detected reaon {e.reason}")
+                logging.error(f"* no public IPv4 address detected reaon {e.reason}")
         except Exception as e:
-            print(f"* no public IPv4 address detected reaon {e}")
+            logging.error(f"* no public IPv4 address detected reaon {e}")
         try:
             header = {'User-Agent': 'Mozilla/5.0 openwrt-koolshare-mod-v2.31'}
             self.public_ipv6 = urlopen(Request("http://ipv6.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header),  timeout=10).read().rstrip().decode("utf-8")
-            # print("ipv6:{}".format(self.public_ipv6))
+            # logging.info("ipv6:{}".format(self.public_ipv6))
         except URLError as e:
             if isinstance(e.reason, TimeoutError):
-                print("* no public IPv6 address detected server timeout")
+                logging.error("* no public IPv6 address detected server timeout")
             else:
-                print(f"* no public IPv6 address detected reaon {e.reason}")
+                logging.error(f"* no public IPv6 address detected reaon {e.reason}")
         except Exception as e:
-            print(f"* no public IPv6 address detected reaon {e}")
+            logging.error(f"* no public IPv6 address detected reaon {e}")
 
     def update_zone_id(self, domain):
         if "id" in domain:
             return
         try:
-            print("* zone id for {} is missing. attempting to get it from cloudflare...".format(domain["name"]))
+            logging.info("* zone id for {} is missing. attempting to get it from cloudflare...".format(domain["name"]))
             req = Request(self.base_url, headers=self.content_header)
             for ret_domain in json.loads(urlopen(req).read().decode("utf-8"))["result"]:
                 if domain["name"] == ret_domain["name"]:
-                    print("* zone id for {} is {}".format(domain["name"], ret_domain["id"]))
+                    logging.info("* zone id for {} is {}".format(domain["name"], ret_domain["id"]))
                     domain["id"] = ret_domain["id"] if ret_domain["id"] is not None else domain["id"]
         except HTTPError:
-            print("* could not get zone id for: {0}".format(domain))
-            print("* possible causes: wrong domain and/or auth credentials")
+            logging.error("* could not get zone id for: {0}".format(domain))
+            logging.error("* possible causes: wrong domain and/or auth credentials")
 
     def update_host_id(self, domain, host):
         if "A_id" in host or "AAAA_id" in host:
             return
         full_domain = host["name"] + "." + domain["name"]
-        print("* host id for {} is missing. attempting to get it from cloudflare...".format(full_domain))
+        logging.info("* host id for {} is missing. attempting to get it from cloudflare...".format(full_domain))
         req = Request(self.base_url + domain["id"] + "/dns_records/", headers=self.content_header)
         result = json.loads(urlopen(req).read().decode("utf-8"))["result"]
-        # print(result)
+        # logging.info(result)
         for e in result:
             if full_domain == e["name"]:
-                print("* host id for {} type {} is {}".format(full_domain, e["type"], e["id"]))
+                logging.info("* host id for {} type {} is {}".format(full_domain, e["type"], e["id"]))
                 host[e["type"] + "_id"] = e["id"] if e["id"] is not None else host[e["type"] + "_id"]
         
 
@@ -114,7 +123,7 @@ class CloudFlareDDns:
         host["A"] = None if "A" not in host else host["A"]
         host["AAAA"] = None if "AAAA" not in host else host["AAAA"]
         if self.public_ipv4 != host["A"] and self.public_ipv4 is not None:
-            print("new ipv4:{} old ipv4:{}".format(self.public_ipv4, host["A"]))
+            logging.info("new ipv4:{} old ipv4:{}".format(self.public_ipv4, host["A"]))
             self.need_update_hosts.append({
                 "ip": self.public_ipv4,
                 "type": "A",
@@ -123,7 +132,7 @@ class CloudFlareDDns:
                 'ttl': 60
             })
         if "AAAA" not in host or self.public_ipv6 != host["AAAA"] and self.public_ipv6 is not None:
-            print("new ipv6:{} old ipv6:{}".format(self.public_ipv6, host["AAAA"]))
+            logging.info("new ipv6:{} old ipv6:{}".format(self.public_ipv6, host["AAAA"]))
             self.need_update_hosts.append({
                 "ip": self.public_ipv6,
                 "type": "AAAA",
@@ -148,21 +157,21 @@ class CloudFlareDDns:
             if rsp["success"]:
                 e["host"][e["type"]] = e["ip"]
                 full_domain = e["host"]["name"] + "." + e["domain"]["name"]
-                print("* update successful (type: {0}, ip: {1}, ip: {2})".format(e["type"], full_domain, e["ip"]))
+                logging.info("* update successful (type: {0}, ip: {1}, ip: {2})".format(e["type"], full_domain, e["ip"]))
 
     def update_cloudflare(self):
         self.need_update_hosts = []
         self.update_my_ip()
         for domain in self.config["domains"]:
             if not domain["name"]:
-                print("* missing domain name")
+                logging.error("* missing domain name")
                 continue
 
             self.update_zone_id(domain)
 
             for host in domain["hosts"]:
                 if not host["name"]:
-                    print("* host name missing")
+                    logging.error("* host name missing")
                     continue
 
                 self.update_host_id(domain, host)
