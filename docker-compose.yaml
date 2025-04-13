@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  ddns:
+    image: ddns
+    container_name: ddns
+    network_mode: host # 使用主机网络模式
+    restart: always # 设置容器总是重启
+    environment:
+      - TZ=Asia/Shanghai # 设置时区
+    volumes:
+      - /root/ddns/conf:/usr/local/ddns/conf # 挂载配置目录
+    logging:
+      options:
+        max-size: "10m" # 日志文件最大大小
+        max-file: "3"   # 最大日志文件数量
