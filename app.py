@@ -68,6 +68,8 @@ class CloudFlareDDns:
                 print("* no public IPv4 address detected server timeout")
             else:
                 print(f"* no public IPv4 address detected reaon {e.reason}")
+        except Exception as e:
+            print(f"* no public IPv4 address detected reaon {e}")
         try:
             header = {'User-Agent': 'Mozilla/5.0 openwrt-koolshare-mod-v2.31'}
             self.public_ipv6 = urlopen(Request("http://ipv6.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header),  timeout=10).read().rstrip().decode("utf-8")
@@ -77,6 +79,8 @@ class CloudFlareDDns:
                 print("* no public IPv6 address detected server timeout")
             else:
                 print(f"* no public IPv6 address detected reaon {e.reason}")
+        except Exception as e:
+            print(f"* no public IPv6 address detected reaon {e}")
 
     def update_zone_id(self, domain):
         if "id" in domain:
