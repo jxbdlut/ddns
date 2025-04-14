@@ -1,4 +1,4 @@
-FROM python:3.7.3-alpine
+FROM python:3.10-alpine
 # 替换为国内镜像源
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
