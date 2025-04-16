@@ -8,8 +8,9 @@ services:
     restart: always # 设置容器总是重启
     environment:
       - TZ=Asia/Shanghai # 设置时区
+      - PYTHON_ENVIRONMENT=prod
     volumes:
-      - /root/ddns/conf:/usr/local/ddns/conf # 挂载配置目录
+      - ./conf:/usr/local/ddns/conf # 挂载配置目录
     logging:
       options:
         max-size: "10m" # 日志文件最大大小

@@ -8,6 +8,7 @@ RUN apk update && apk add --no-cache tzdata
 # 设置时区（例如 Asia/Shanghai）
 ENV TZ=Asia/Shanghai
 RUN ln -sf /usr/share/zoneinfo/$TZ /etc/localtime && echo "$TZ" > /etc/timezone
+
 ENV PYTHON_ENVIRONMENT="" PYTHONUNBUFFERED=1
 
 ADD . /usr/local/ddns

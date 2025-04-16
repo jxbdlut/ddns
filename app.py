@@ -55,7 +55,7 @@ class CloudFlareDDns:
 
     def get_config(self, config_path):
         env = os.environ.get('PYTHON_ENVIRONMENT') if os.environ.get('PYTHON_ENVIRONMENT') else ""
-        config_file_name = config_path + "/conf/conf" + env + ".json"
+        config_file_name = config_path + "/conf/conf." + env + ".json"
         with open(config_file_name, "r") as file:
             try:
                 self.config = json.loads(file.read())
@@ -70,7 +70,7 @@ class CloudFlareDDns:
     def update_my_ip(self):
         try:
             header = {'User-Agent': 'Mozilla/5.0 openwrt-koolshare-mod-v2.31'}
-            self.public_ipv4 = urlopen(Request("https://www.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header), timeout=10).read().rstrip().decode("utf-8")
+            self.public_ipv4 = urlopen(Request("https://www.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header), timeout=30).read().rstrip().decode("utf-8")
             # logging.info("ipv4:{}".format(self.public_ipv4))
         except URLError as e:
             if isinstance(e.reason, TimeoutError):
@@ -81,7 +81,7 @@ class CloudFlareDDns:
             logging.error(f"* no public IPv4 address detected reaon {e}")
         try:
             header = {'User-Agent': 'Mozilla/5.0 openwrt-koolshare-mod-v2.31'}
-            self.public_ipv6 = urlopen(Request("https://ipv6.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header),  timeout=10).read().rstrip().decode("utf-8")
+            self.public_ipv6 = urlopen(Request("https://ipv6.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header),  timeout=30).read().rstrip().decode("utf-8")
             # logging.info("ipv6:{}".format(self.public_ipv6))
         except URLError as e:
             if isinstance(e.reason, TimeoutError):
@@ -97,13 +97,15 @@ class CloudFlareDDns:
         try:
             logging.info("* zone id for {} is missing. attempting to get it from cloudflare...".format(domain["name"]))
             req = Request(self.base_url, headers=self.content_header)
-            for ret_domain in json.loads(urlopen(req).read().decode("utf-8"))["result"]:
+            for ret_domain in json.loads(urlopen(req, timeout=10).read().decode("utf-8"))["result"]:
                 if domain["name"] == ret_domain["name"]:
                     logging.info("* zone id for {} is {}".format(domain["name"], ret_domain["id"]))
                     domain["id"] = ret_domain["id"] if ret_domain["id"] is not None else domain["id"]
-        except HTTPError:
-            logging.error("* could not get zone id for: {0}".format(domain))
-            logging.error("* possible causes: wrong domain and/or auth credentials")
+        except HTTPError as e:
+            logging.error(f"* could not get zone id for: {domain} {e}")
+        except Exception as e:
+            logging.error(f"* could not get zone id for: {domain} {e}")
+
 
     def update_host_id(self, domain, host):
         if "A_id" in host or "AAAA_id" in host:
@@ -111,12 +113,17 @@ class CloudFlareDDns:
         full_domain = host["name"] + "." + domain["name"]
         logging.info("* host id for {} is missing. attempting to get it from cloudflare...".format(full_domain))
         req = Request(self.base_url + domain["id"] + "/dns_records/", headers=self.content_header)
-        result = json.loads(urlopen(req).read().decode("utf-8"))["result"]
-        # logging.info(result)
-        for e in result:
-            if full_domain == e["name"]:
-                logging.info("* host id for {} type {} is {}".format(full_domain, e["type"], e["id"]))
-                host[e["type"] + "_id"] = e["id"] if e["id"] is not None else host[e["type"] + "_id"]
+        try:
+            result = json.loads(urlopen(req, timeout=10).read().decode("utf-8"))["result"]
+            # logging.info(result)
+            for e in result:
+                if full_domain == e["name"]:
+                    logging.info("* host id for {} type {} is {}".format(full_domain, e["type"], e["id"]))
+                    host[e["type"] + "_id"] = e["id"] if e["id"] is not None else host[e["type"] + "_id"]
+        except HTTPError as e:
+            logging.error(f"* could not get zone id for: {domain} {e.reason}")
+        except Exception as e:
+            logging.error(f"* could not get zone id for: {domain} {e}")
         
 
     def get_need_update_hosts(self, domain, host):
@@ -142,22 +149,31 @@ class CloudFlareDDns:
             })
 
     def update_host_on_cloudflare(self):
-        for e in self.need_update_hosts:
+        for enum in self.need_update_hosts:
             data = json.dumps({
-                "id": e["host"][e["type"] + "_id"],
-                "type": e["type"],
-                "name": e["host"]["name"],
-                "content": e["ip"],
-                "ttl": e["ttl"]
+                "id": enum["host"][enum["type"] + "_id"],
+                "type": enum["type"],
+                "name": enum["host"]["name"],
+                "content": enum["ip"],
+                "ttl": enum["ttl"]
             })
-            uri = "{0}{1}{2}{3}".format(self.base_url, e["domain"]["id"], "/dns_records/", e["host"][e["type"] + "_id"])
+            uri = "{0}{1}{2}{3}".format(self.base_url, enum["domain"]["id"], "/dns_records/", enum["host"][enum["type"] + "_id"])
             req = Request(uri, data=data.encode("utf-8"), headers=self.content_header)
             req.method = "PUT"
-            rsp = json.loads(urlopen(req).read().decode("utf-8"))
-            if rsp["success"]:
-                e["host"][e["type"]] = e["ip"]
-                full_domain = e["host"]["name"] + "." + e["domain"]["name"]
-                logging.info("* update successful (type: {0}, ip: {1}, ip: {2})".format(e["type"], full_domain, e["ip"]))
+            full_domain = enum["host"]["name"] + "." + enum["domain"]["name"]
+            try:
+                rsp = json.loads(urlopen(req, timeout=10).read().decode("utf-8"))
+                if rsp["success"]:
+                    enum["host"][enum["type"]] = enum["ip"]
+                    full_domain = enum["host"]["name"] + "." + enum["domain"]["name"]
+                    logging.info("* update successful (type: {0}, ip: {1}, ip: {2})".format(enum["type"], full_domain, enum["ip"]))
+            except URLError as e:
+                if isinstance(e.reason, TimeoutError):
+                    logging.error("* update (type: {0}, ip: {1}, ip: {2}) failed server timeout".format(enum["type"], full_domain, enum["ip"]))
+                else:
+                    logging.error("* update (type: {0}, ip: {1}, ip: {2}) failed {}".format(enum["type"], full_domain, enum["ip"], e.reason))
+            except Exception as e:
+                logging.error("* update (type: {0}, ip: {1}, ip: {2}) failed {}".format(enum["type"], full_domain, enum["ip"], e))
 
     def update_cloudflare(self):
         self.need_update_hosts = []
