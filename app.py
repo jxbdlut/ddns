@@ -171,9 +171,9 @@ class CloudFlareDDns:
                 if isinstance(e.reason, TimeoutError):
                     logging.error("* update (type: {0}, ip: {1}, ip: {2}) failed server timeout".format(enum["type"], full_domain, enum["ip"]))
                 else:
-                    logging.error("* update (type: {0}, ip: {1}, ip: {2}) failed {}".format(enum["type"], full_domain, enum["ip"], e.reason))
+                    logging.error("* update (type: {0}, ip: {1}, ip: {2}) failed {4}".format(enum["type"], full_domain, enum["ip"], e.reason))
             except Exception as e:
-                logging.error("* update (type: {0}, ip: {1}, ip: {2}) failed {}".format(enum["type"], full_domain, enum["ip"], e))
+                logging.error("* update (type: {0}, ip: {1}, ip: {2}) failed {4}".format(enum["type"], full_domain, enum["ip"], e))
 
     def update_cloudflare(self):
         self.need_update_hosts = []
