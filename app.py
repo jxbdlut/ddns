@@ -82,7 +82,7 @@ class CloudFlareDDns:
         try:
             header = {'User-Agent': 'Mozilla/5.0 openwrt-koolshare-mod-v2.31'}
             self.public_ipv6 = urlopen(Request("https://ipv6.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header),  timeout=30).read().rstrip().decode("utf-8")
-            logging.info(f"ipv6:{self.public_ipv6}")
+            # logging.info(f"ipv6:{self.public_ipv6}")
         except URLError as e:
             if isinstance(e.reason, TimeoutError):
                 logging.error("* no public IPv6 address detected server timeout")
@@ -158,7 +158,9 @@ class CloudFlareDDns:
             })
             if enum["type"] + "_id" not in enum["host"]:
                 continue
-            uri = f"{self.base_url}{enum['domain']['id']}/dns_records/{enum['host'][enum['type']]}_id"
+            uri = f"{self.base_url}{enum['domain']['id']}/dns_records/{enum['host'][enum['type'] + '_id']}"
+            # uri = "{0}{1}{2}{3}".format(self.base_url, enum["domain"]["id"], "/dns_records/", enum["host"][enum["type"] + "_id"])
+            # logging.info(uri)
             req = Request(uri, data=data.encode("utf-8"), headers=self.content_header)
             req.method = "PUT"
             full_domain = enum["host"]["name"] + "." + enum["domain"]["name"]
