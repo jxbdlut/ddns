@@ -95,11 +95,11 @@ class CloudFlareDDns:
         if "id" in domain:
             return
         try:
-            logging.info(f"* zone id for {domain["name"]} is missing. attempting to get it from cloudflare...")
+            logging.info(f"* zone id for {domain['name']} is missing. attempting to get it from cloudflare...")
             req = Request(self.base_url, headers=self.content_header)
             for ret_domain in json.loads(urlopen(req, timeout=10).read().decode("utf-8"))["result"]:
                 if domain["name"] == ret_domain["name"]:
-                    logging.info(f"* zone id for {domain["name"]} is {ret_domain["id"]}")
+                    logging.info(f"* zone id for {domain['name']} is {ret_domain['id']}")
                     domain["id"] = ret_domain["id"] if ret_domain["id"] is not None else domain["id"]
         except HTTPError as e:
             logging.error(f"* could not get zone id for: {domain} {e}")
@@ -117,7 +117,7 @@ class CloudFlareDDns:
             # logging.info(result)
             for e in result:
                 if full_domain == e["name"]:
-                    logging.info(f"* host id for {full_domain} type {e["type"]} is {e["id"]}")
+                    logging.info(f"* host id for {full_domain} type {e['type']} is {e['id']}")
                     host[e["type"] + "_id"] = e["id"] if e["id"] is not None else host[e["type"] + "_id"]
         except HTTPError as e:
             logging.error(f"* could not get host id for: {domain} {e.reason}")
@@ -129,7 +129,7 @@ class CloudFlareDDns:
         host["A"] = None if "A" not in host else host["A"]
         host["AAAA"] = None if "AAAA" not in host else host["AAAA"]
         if self.public_ipv4 != host["A"] and self.public_ipv4 is not None:
-            logging.info(f"new ipv4:{self.public_ipv4} old ipv4:{host["A"]}")
+            logging.info(f"new ipv4:{self.public_ipv4} old ipv4:{host['A']}")
             self.need_update_hosts.append({
                 "ip": self.public_ipv4,
                 "type": "A",
@@ -138,7 +138,7 @@ class CloudFlareDDns:
                 'ttl': 60
             })
         if "AAAA" not in host or self.public_ipv6 != host["AAAA"] and self.public_ipv6 is not None:
-            logging.info(f"new ipv6:{self.public_ipv6} old ipv6:{host["AAAA"]}")
+            logging.info(f"new ipv6:{self.public_ipv6} old ipv6:{host['AAAA']}")
             self.need_update_hosts.append({
                 "ip": self.public_ipv6,
                 "type": "AAAA",
@@ -158,7 +158,7 @@ class CloudFlareDDns:
             })
             if enum["type"] + "_id" not in enum["host"]:
                 continue
-            uri = f"{self.base_url}{enum["domain"]["id"]}/dns_records/{enum["host"][enum["type"] + "_id"]}"
+            uri = f"{self.base_url}{enum['domain']['id']}/dns_records/{enum['host'][enum['type']]}_id"
             req = Request(uri, data=data.encode("utf-8"), headers=self.content_header)
             req.method = "PUT"
             full_domain = enum["host"]["name"] + "." + enum["domain"]["name"]
@@ -167,14 +167,14 @@ class CloudFlareDDns:
                 if rsp["success"]:
                     enum["host"][enum["type"]] = enum["ip"]
                     full_domain = enum["host"]["name"] + "." + enum["domain"]["name"]
-                    logging.info(f"* update successful (type: {enum["type"]}, domain: {full_domain}, ip: {enum["ip"]})")
+                    logging.info(f"* update successful (type: {enum['type']}, domain: {full_domain}, ip: {enum['ip']})")
             except URLError as e:
                 if isinstance(e.reason, TimeoutError):
-                    logging.error(f"* update (type: {enum["type"]}, domain: {full_domain}, ip: {enum["ip"]}) failed server timeout")
+                    logging.error(f"* update (type: {enum['type']}, domain: {full_domain}, ip: {enum['ip']}) failed server timeout")
                 else:
-                    logging.error(f"* update (type: {enum["type"]}, domain: {full_domain}, ip: {enum["ip"]}) failed {e.reason}")
+                    logging.error(f"* update (type: {enum['type']}, domain: {full_domain}, ip: {enum['ip']}) failed {e.reason}")
             except Exception as e:
-                logging.error(f"* update (type: {enum["type"]}, domain: {full_domain}, ip: {enum["ip"]}) failed {e}")
+                logging.error(f"* update (type: {enum['type']}, domain: {full_domain}, ip: {enum['ip']}) failed {e}")
 
     def update_cloudflare(self):
         self.need_update_hosts = []
