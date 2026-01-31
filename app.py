@@ -47,15 +47,40 @@ class CloudFlareDDns:
         
         # 配置 requests session 和重试策略
         self.session = requests.Session()
-        retry_strategy = Retry(
-            total=3,  # 总重试次数
-            backoff_factor=1,  # 重试间隔
-            status_forcelist=[429, 500, 502, 503, 504],  # 在这些状态码上重试
-            allowed_methods=["HEAD", "GET", "OPTIONS", "PUT", "POST"]  # 允许重试的方法
+        
+        # Cloudflare API 重试策略（更激进）
+        cf_retry = Retry(
+            total=5,
+            connect=5,
+            read=5,
+            redirect=5,
+            backoff_factor=1.5,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "OPTIONS", "PUT", "POST"]
         )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
+        
+        # IP 获取服务重试策略（处理连接断开）
+        ip_retry = Retry(
+            total=5,
+            connect=5,
+            read=5,
+            redirect=5,
+            backoff_factor=2,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "OPTIONS"],
+            raise_on_redirect=False,
+            raise_on_status=False
+        )
+        
+        # 为 Cloudflare 配置适配器
+        cf_adapter = HTTPAdapter(max_retries=cf_retry, pool_connections=10, pool_maxsize=10)
+        self.session.mount("https://api.cloudflare.com", cf_adapter)
+        
+        # 为 IP 服务配置单独的 session
+        self.ip_session = requests.Session()
+        ip_adapter = HTTPAdapter(max_retries=ip_retry, pool_connections=5, pool_maxsize=5)
+        self.ip_session.mount("http://", ip_adapter)
+        self.ip_session.mount("https://", ip_adapter)
 
     def restart(self):
         self.update_cloudflare()
@@ -82,22 +107,29 @@ class CloudFlareDDns:
     def update_my_ip(self):
         try:
             header = {'User-Agent': 'Mozilla/5.0 openwrt-koolshare-mod-v2.31'}
-            response = self.session.get("https://ipv4.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header, timeout=(10, 30))
+            response = self.ip_session.get("https://ipv4.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header, timeout=(15, 45))
+            response.raise_for_status()
             self.public_ipv4 = response.text.rstrip()
-            # logging.info(f"ipv4:{self.public_ipv4}")
+            logging.info(f"IPv4 updated: {self.public_ipv4}")
+        except requests.exceptions.ConnectionError as e:
+            logging.error(f"* no public IPv4 address detected connection error: {type(e).__name__}")
         except requests.Timeout:
             logging.error("* no public IPv4 address detected server timeout")
         except Exception as e:
-            logging.error(f"* no public IPv4 address detected reason {e}")
+            logging.error(f"* no public IPv4 address detected: {e}")
+        
         try:
             header = {'User-Agent': 'Mozilla/5.0 openwrt-koolshare-mod-v2.31'}
-            response = self.session.get("https://ipv6.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header, timeout=(10, 30))
+            response = self.ip_session.get("https://ipv6.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header, timeout=(15, 45))
+            response.raise_for_status()
             self.public_ipv6 = response.text.rstrip()
-            # logging.info(f"ipv6:{self.public_ipv6}")
+            logging.info(f"IPv6 updated: {self.public_ipv6}")
+        except requests.exceptions.ConnectionError as e:
+            logging.error(f"* no public IPv6 address detected connection error: {type(e).__name__}")
         except requests.Timeout:
             logging.error("* no public IPv6 address detected server timeout")
         except Exception as e:
-            logging.error(f"* no public IPv6 address detected reason {e}")
+            logging.error(f"* no public IPv6 address detected: {e}")
 
     def update_zone_id(self, domain):
         if "id" in domain:
