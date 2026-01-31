@@ -1,7 +1,3 @@
-from urllib.request import urlopen
-from urllib.request import Request
-from urllib.error import URLError
-from urllib.error import HTTPError
 from tornado import ioloop
 import datetime
 import functools
@@ -9,6 +5,9 @@ import json
 import sys
 import os
 import logging
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # 配置日志格式，包含时间戳
 logging.basicConfig(
@@ -45,8 +44,21 @@ class CloudFlareDDns:
             "Content-type": "application/json",
             "user-agent": "Mozilla/5.0 "
         }
+        
+        # 配置 requests session 和重试策略
+        self.session = requests.Session()
+        retry_strategy = Retry(
+            total=3,  # 总重试次数
+            backoff_factor=1,  # 重试间隔
+            status_forcelist=[429, 500, 502, 503, 504],  # 在这些状态码上重试
+            allowed_methods=["HEAD", "GET", "OPTIONS", "PUT", "POST"]  # 允许重试的方法
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
     def restart(self):
+        self.update_cloudflare()
         self.timer.callback_time = self.interval * 1000
         self.timer.start()
 
@@ -70,38 +82,35 @@ class CloudFlareDDns:
     def update_my_ip(self):
         try:
             header = {'User-Agent': 'Mozilla/5.0 openwrt-koolshare-mod-v2.31'}
-            self.public_ipv4 = urlopen(Request("https://www.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header), timeout=30).read().rstrip().decode("utf-8")
+            response = self.session.get("https://ipv4.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header, timeout=(10, 30))
+            self.public_ipv4 = response.text.rstrip()
             # logging.info(f"ipv4:{self.public_ipv4}")
-        except URLError as e:
-            if isinstance(e.reason, TimeoutError):
-                logging.error("* no public IPv4 address detected server timeout")
-            else:
-                logging.error(f"* no public IPv4 address detected reaon {e.reason}")
+        except requests.Timeout:
+            logging.error("* no public IPv4 address detected server timeout")
         except Exception as e:
-            logging.error(f"* no public IPv4 address detected reaon {e}")
+            logging.error(f"* no public IPv4 address detected reason {e}")
         try:
             header = {'User-Agent': 'Mozilla/5.0 openwrt-koolshare-mod-v2.31'}
-            self.public_ipv6 = urlopen(Request("https://ipv6.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header),  timeout=30).read().rstrip().decode("utf-8")
+            response = self.session.get("https://ipv6.jxbdlut.xyz/cgi-bin/get_my_ip", headers=header, timeout=(10, 30))
+            self.public_ipv6 = response.text.rstrip()
             # logging.info(f"ipv6:{self.public_ipv6}")
-        except URLError as e:
-            if isinstance(e.reason, TimeoutError):
-                logging.error("* no public IPv6 address detected server timeout")
-            else:
-                logging.error(f"* no public IPv6 address detected reaon {e.reason}")
+        except requests.Timeout:
+            logging.error("* no public IPv6 address detected server timeout")
         except Exception as e:
-            logging.error(f"* no public IPv6 address detected reaon {e}")
+            logging.error(f"* no public IPv6 address detected reason {e}")
 
     def update_zone_id(self, domain):
         if "id" in domain:
             return
         try:
             logging.info(f"* zone id for {domain['name']} is missing. attempting to get it from cloudflare...")
-            req = Request(self.base_url, headers=self.content_header)
-            for ret_domain in json.loads(urlopen(req, timeout=10).read().decode("utf-8"))["result"]:
+            response = self.session.get(self.base_url, headers=self.content_header, timeout=(30, 60))
+            response.raise_for_status()
+            for ret_domain in response.json()["result"]:
                 if domain["name"] == ret_domain["name"]:
                     logging.info(f"* zone id for {domain['name']} is {ret_domain['id']}")
                     domain["id"] = ret_domain["id"] if ret_domain["id"] is not None else domain["id"]
-        except HTTPError as e:
+        except requests.exceptions.HTTPError as e:
             logging.error(f"* could not get zone id for: {domain} {e}")
         except Exception as e:
             logging.error(f"* could not get zone id for: {domain} {e}")
@@ -111,16 +120,18 @@ class CloudFlareDDns:
             return
         full_domain = host["name"] + "." + domain["name"]
         logging.info(f"* host id for {full_domain} is missing. attempting to get it from cloudflare...")
-        req = Request(self.base_url + domain["id"] + "/dns_records/", headers=self.content_header)
+        url = self.base_url + domain["id"] + "/dns_records/"
         try:
-            result = json.loads(urlopen(req, timeout=10).read().decode("utf-8"))["result"]
+            response = self.session.get(url, headers=self.content_header, timeout=(30, 60))
+            response.raise_for_status()
+            result = response.json()["result"]
             # logging.info(result)
             for e in result:
                 if full_domain == e["name"]:
                     logging.info(f"* host id for {full_domain} type {e['type']} is {e['id']}")
                     host[e["type"] + "_id"] = e["id"] if e["id"] is not None else host[e["type"] + "_id"]
-        except HTTPError as e:
-            logging.error(f"* could not get host id for: {domain} {e.reason}")
+        except requests.exceptions.HTTPError as e:
+            logging.error(f"* could not get host id for: {domain} {e.response.reason}")
         except Exception as e:
             logging.error(f"* could not get host id for: {domain} {e}")
         
@@ -161,20 +172,19 @@ class CloudFlareDDns:
             uri = f"{self.base_url}{enum['domain']['id']}/dns_records/{enum['host'][enum['type'] + '_id']}"
             # uri = "{0}{1}{2}{3}".format(self.base_url, enum["domain"]["id"], "/dns_records/", enum["host"][enum["type"] + "_id"])
             # logging.info(uri)
-            req = Request(uri, data=data.encode("utf-8"), headers=self.content_header)
-            req.method = "PUT"
             full_domain = enum["host"]["name"] + "." + enum["domain"]["name"]
             try:
-                rsp = json.loads(urlopen(req, timeout=10).read().decode("utf-8"))
+                response = self.session.put(uri, data=data, headers=self.content_header, timeout=(30, 60))
+                response.raise_for_status()
+                rsp = response.json()
                 if rsp["success"]:
                     enum["host"][enum["type"]] = enum["ip"]
                     full_domain = enum["host"]["name"] + "." + enum["domain"]["name"]
                     logging.info(f"* update successful (type: {enum['type']}, domain: {full_domain}, ip: {enum['ip']})")
-            except URLError as e:
-                if isinstance(e.reason, TimeoutError):
-                    logging.error(f"* update (type: {enum['type']}, domain: {full_domain}, ip: {enum['ip']}) failed server timeout")
-                else:
-                    logging.error(f"* update (type: {enum['type']}, domain: {full_domain}, ip: {enum['ip']}) failed {e.reason}")
+            except requests.Timeout:
+                logging.error(f"* update (type: {enum['type']}, domain: {full_domain}, ip: {enum['ip']}) failed server timeout")
+            except requests.exceptions.HTTPError as e:
+                logging.error(f"* update (type: {enum['type']}, domain: {full_domain}, ip: {enum['ip']}) failed {e}")
             except Exception as e:
                 logging.error(f"* update (type: {enum['type']}, domain: {full_domain}, ip: {enum['ip']}) failed {e}")
 
